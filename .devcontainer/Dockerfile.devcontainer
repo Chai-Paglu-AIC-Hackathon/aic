@@ -1,0 +1,25 @@
+# docker/Dockerfile
+FROM ghcr.io/intrinsic-dev/aic/aic_eval:latest
+
+# CUDA + cuDNN for inference
+RUN sudo apt-get update
+RUN sudo apt-get install -y --no-install-recommends \
+        curl ca-certificates git \
+        build-essential cmake pkg-config \
+        python3 python3-venv python3-pip python3-toml \
+        jq unzip \
+        bash-completion \
+        locales \
+        htop
+
+# Ensure UTF-8 locale (ROS tooling sometimes expects it)
+RUN sudo locale-gen en_US.UTF-8
+RUN sudo update-locale LANG=en_US.UTF-8
+
+# Install Pixi (per guide)
+# Guide command: curl -fsSL https://pixi.sh/install.sh | sh
+# We do it non-interactively and ensure PATH via PIXI_HOME in devcontainer.json
+RUN curl -fsSL https://pixi.sh/install.sh | bash
+
+WORKDIR /ws_aic
+ENTRYPOINT ["/entrypoint.sh"]
