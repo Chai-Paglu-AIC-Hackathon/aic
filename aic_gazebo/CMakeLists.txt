@@ -12,16 +12,16 @@ find_package(gz_cmake_vendor REQUIRED)
 find_package(gz-cmake REQUIRED)
 
 find_package(gz_plugin_vendor REQUIRED)
-find_package(gz-plugin REQUIRED COMPONENTS register)
-set(GZ_PLUGIN_VER ${gz-plugin_VERSION_MAJOR})
+find_package(gz-plugin3 REQUIRED COMPONENTS register)
+set(GZ_PLUGIN_VER ${gz-plugin3_VERSION_MAJOR})
 
 find_package(gz_common_vendor REQUIRED)
-find_package(gz-common REQUIRED COMPONENTS profiler)
-set(GZ_COMMON_VER ${gz-common_VERSION_MAJOR})
+find_package(gz-common6 REQUIRED COMPONENTS profiler)
+set(GZ_COMMON_VER ${gz-common6_VERSION_MAJOR})
 
 find_package(gz_msgs_vendor REQUIRED)
-find_package(gz-msgs REQUIRED)
-set(GZ_MSGS_VER ${gz-msgs_VERSION_MAJOR})
+find_package(gz-msgs11 REQUIRED)
+set(GZ_MSGS_VER ${gz-msgs11_VERSION_MAJOR})
 
 find_package(gz_sim_vendor REQUIRED)
 find_package(gz-sim REQUIRED)
