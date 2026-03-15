@@ -46,3 +46,6 @@ pyspacemouse = ">=2.0.0, <3"
 
 [activation]
 scripts = ["pixi_env_setup.sh"]
+
+[activation.env]
+GZ_PARTITION = "simulation1"
