@@ -19,6 +19,7 @@ setup(
     license="Apache-2.0",
     entry_points={
         "console_scripts": [
+            "cartesian_joystick_teleop = aic_teleoperation.cartesian_joystick_teleop:main",
             "cartesian_keyboard_teleop = aic_teleoperation.cartesian_keyboard_teleop:main",
             "joint_keyboard_teleop = aic_teleoperation.joint_keyboard_teleop:main",
         ],
