@@ -7,6 +7,7 @@ Keyboard-based teleoperation for the robot in both joint-space and Cartesian-spa
 1. Follow the [Getting Started Guide](../../docs/getting_started.md) to set up your development environment
 2. X11 display server (pynput has known issues with Wayland)
 3. For native builds: `sudo apt install python3-pynput` (pixi installs automatically)
+4. For joystick teleoperation: Install pygame (`pip install pygame`) and connect a PS4 controller
 
 ## Available Scripts
 
@@ -54,7 +55,51 @@ Control end-effector pose (position and orientation).
 **Exit:**
 - `ESC` - Quit teleoperation
 
+### 3. Cartesian Space Joystick Teleoperation (`cartesian_joystick_teleop`)
+
+Control end-effector pose using a PS4 joystick controller.
+
+**Axes Mapping:**
+- Left Stick X/Y: Linear X/Y
+- Right Stick X/Y: Angular Y/X
+- L2/R2 Triggers: Linear Z
+
+**Button Controls:**
+- Square: Activate slow mode (linear: 0.02 m/s, angular: 0.02 rad/s)
+- Circle: Activate fast mode (linear: 0.1 m/s, angular: 0.1 rad/s)
+- Triangle: Switch to tool frame (`gripper/tcp`)
+- Cross: Switch to global frame (`base_link`)
+- Options: Quit teleoperation
+
 ## Usage
+
+Start the evaluation environment first following the [Getting Started - Quick Start](../../docs/getting_started.md#quick-start) instructions.
+
+### With pixi (Recommended)
+
+```bash
+cd ~/ws_aic/src/aic
+
+# Run teleoperation
+pixi run ros2 run aic_teleoperation joint_keyboard_teleop
+# or
+pixi run ros2 run aic_teleoperation cartesian_keyboard_teleop
+# or
+pixi run ros2 run aic_teleoperation cartesian_joystick_teleop
+```
+
+### With native ROS 2 build
+
+See [Building the Evaluation Component from Source](../../docs/build_eval.md) for workspace build and Zenoh setup.
+
+```bash
+# Run teleoperation
+ros2 run aic_teleoperation joint_keyboard_teleop
+# or
+ros2 run aic_teleoperation cartesian_keyboard_teleop
+# or
+ros2 run aic_teleoperation cartesian_joystick_teleop
+```
 
 Start the evaluation environment first following the [Getting Started - Quick Start](../../docs/getting_started.md#quick-start) instructions.
 
