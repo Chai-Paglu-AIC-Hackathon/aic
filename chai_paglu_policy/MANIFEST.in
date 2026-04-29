@@ -1,0 +1,2 @@
+recursive-include resource *
+recursive-include chai_paglu_policy/act_14eps_cheatcode *

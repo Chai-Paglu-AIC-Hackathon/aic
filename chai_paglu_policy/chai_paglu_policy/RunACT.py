@@ -18,14 +18,11 @@ import os
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
-import time
 import json
-import torch
 import numpy as np
-import cv2
-import draccus
 from pathlib import Path
 from typing import Callable, Dict, Any, List
+from rclpy.duration import Duration
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Vector3
 
@@ -44,45 +41,86 @@ from aic_control_interfaces.msg import (
 )
 from geometry_msgs.msg import Wrench
 
-# LeRobot & Safetensors
-from lerobot.policies.act.modeling_act import ACTPolicy
-from lerobot.policies.act.configuration_act import ACTConfig
-from safetensors.torch import load_file
-from huggingface_hub import snapshot_download
-
-
 class RunACT(Policy):
     def __init__(self, parent_node: Node):
         super().__init__(parent_node)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Import large libraries and load model in __init__ to avoid overhead during first inference call.
+        import torch
+        import cv2
+        import draccus
+        from lerobot.policies.act.modeling_act import ACTPolicy
+        from lerobot.policies.act.configuration_act import ACTConfig
+        from safetensors.torch import load_file
+        from huggingface_hub import snapshot_download
+
+        self.torch = torch
+        self.cv2 = cv2
+        self.draccus = draccus
+        self.ACTPolicy = ACTPolicy
+        self.ACTConfig = ACTConfig
+        self.load_file = load_file
+        self.snapshot_download = snapshot_download
+
+        self.device = self.torch.device("cuda" if self.torch.cuda.is_available() else "cpu")
+        self.get_logger().info(f"Initializing RunACT policy on device: {self.device}")
 
         # -------------------------------------------------------------------------
         # 1. Configuration & Weights Loading
         # -------------------------------------------------------------------------
-        # repo_id = "grkw/aic_act_policy"
-        repo_id = "chai-paglu/act_14eps_cheatcode"
-        # repo_id = "chai-paglu/act_11eps_teleop_sam"
+        self.repo_id = "chai-paglu/act_14eps_cheatcode"
 
-        # Path to your checkpoint folder
-        policy_path = Path(
-            snapshot_download(
-                repo_id=repo_id,
-                allow_patterns=["config.json", "model.safetensors", "*.safetensors"],
+        # TODO: MAKE SURE TO TRY THIS WITH FRAME ID SET TO `gripper/tcp` INSTEAD OF `base_link` IF PERFORMANCE IS POOR. 
+        # THE POLICY WAS TRAINED WITH OBSERVATIONS IN THE TCP FRAME, SO IT MAY EXPECT ACTIONS TO BE COMMANDED IN THE TCP FRAME AS WELL. 
+        # THIS REQUIRES A TF TRANSFORM TO BE PUBLISHED FROM `base_link` TO `gripper/tcp`, BUT IT COULD SIGNIFICANTLY IMPROVE PERFORMANCE 
+        # BY MATCHING THE TRAINING CONDITIONS OF THE POLICY.
+
+        self.repo_id = "chai-paglu/act_11eps_teleop_sam"
+
+        # Path to your checkpoint folder.
+        # Installed ROS package data is placed in package share.
+        this_file_parent = Path(__file__).resolve().parent
+        policy_path = this_file_parent / "act_14eps_cheatcode"
+
+        DOWNLOAD_FROM_HF_HUB = True
+        if not DOWNLOAD_FROM_HF_HUB and not policy_path.exists():
+            raise FileNotFoundError(
+                f"Policy path not found: {policy_path}. "
+                "Ensure the resource folder is installed into package share."
             )
-        )
+
+        self.get_logger().info(f"Loading ACT policy from local path: {policy_path}")
+        if DOWNLOAD_FROM_HF_HUB:
+            policy_path = Path(
+                self.snapshot_download(
+                    repo_id=self.repo_id,
+                    allow_patterns=["config.json", "model.safetensors", "*.safetensors"],
+                )
+            )
+            self.get_logger().info(f"Policy files downloaded to: {policy_path}")
+        self.get_logger().info(f"Policy files in directory: {list(policy_path.iterdir())}")
 
         # Load Config Manually (Fixes 'Draccus' error by removing unknown 'type' field)
         with open(policy_path / "config.json", "r") as f:
             config_dict = json.load(f)
             if "type" in config_dict:
                 del config_dict["type"]
+        self.get_logger().info(f"Policy config loaded: {config_dict}")
 
-        config = draccus.decode(ACTConfig, config_dict)
+        config = self.draccus.decode(self.ACTConfig, config_dict)
+        self.get_logger().info(f"Policy config decoded successfully: {config}")
+
+        # Prevent torchvision from attempting to download pretrained backbone weights
+        if getattr(config, "pretrained_backbone_weights", None) is not None:
+            self.get_logger().warn(
+                "Overriding pretrained backbone weights to None to avoid internet access"
+            )
+            config.pretrained_backbone_weights = None
 
         # Load Policy Architecture & Weights
-        self.policy = ACTPolicy(config)
+        self.policy = self.ACTPolicy(config)
         model_weights_path = policy_path / "model.safetensors"
-        self.policy.load_state_dict(load_file(model_weights_path))
+        self.policy.load_state_dict(self.load_file(model_weights_path))
         self.policy.eval()
         self.policy.to(self.device)
 
@@ -94,7 +132,7 @@ class RunACT(Policy):
         stats_path = (
             policy_path / "policy_preprocessor_step_3_normalizer_processor.safetensors"
         )
-        stats = load_file(stats_path)
+        stats = self.load_file(stats_path)
 
         # Helper to extract and shape stats for broadcasting
         def get_stat(key, shape):
@@ -134,14 +172,14 @@ class RunACT(Policy):
 
         self.get_logger().info("Normalization statistics loaded successfully.")
 
-    @staticmethod
     def _img_to_tensor(
+        self,
         raw_img,
-        device: torch.device,
+        device: Any,
         scale: float,
-        mean: torch.Tensor,
-        std: torch.Tensor,
-    ) -> torch.Tensor:
+        mean: Any,
+        std: Any,
+    ) -> Any:
         """Converts ROS Image -> Resized -> Permuted -> Normalized Tensor."""
         # 1. Bytes to Numpy (H, W, C)
         img_np = np.frombuffer(raw_img.data, dtype=np.uint8).reshape(
@@ -150,13 +188,13 @@ class RunACT(Policy):
 
         # 2. Resize
         if scale != 1.0:
-            img_np = cv2.resize(
-                img_np, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA
+            img_np = self.cv2.resize(
+                img_np, None, fx=scale, fy=scale, interpolation=self.cv2.INTER_AREA
             )
 
         # 3. To Tensor -> Permute (HWC -> CHW) -> Float -> Div(255) -> Batch Dim
         tensor = (
-            torch.from_numpy(img_np)
+            self.torch.from_numpy(img_np)
             .permute(2, 0, 1)
             .float()
             .div(255.0)
@@ -168,7 +206,7 @@ class RunACT(Policy):
         # Formula: (x - mean) / std
         return (tensor - mean) / std
 
-    def prepare_observations(self, obs_msg: Observation) -> Dict[str, torch.Tensor]:
+    def prepare_observations(self, obs_msg: Observation) -> Dict[str, Any]:
         """Convert ROS Observation message into dictionary of normalized tensors."""
 
         # --- Process Cameras ---
@@ -230,7 +268,7 @@ class RunACT(Policy):
 
         # Normalize State
         raw_state_tensor = (
-            torch.from_numpy(state_np).float().unsqueeze(0).to(self.device)
+            self.torch.from_numpy(state_np).float().unsqueeze(0).to(self.device)
         )
         obs["observation.state"] = (raw_state_tensor - self.state_mean) / self.state_std
 
@@ -247,11 +285,15 @@ class RunACT(Policy):
         self.policy.reset()
         self.get_logger().info(f"RunACT.insert_cable() enter. Task: {task}")
 
-        start_time = time.time()
+        start_time = self.time_now()
+        # deadline = start_time + Duration(seconds=float(task.time_limit) * 0.5)
+        deadline = start_time + Duration(seconds=30.0)
 
-        # Run inference for 30 seconds
-        while time.time() - start_time < 30.0:
-            loop_start = time.time()
+        # Run inference for the specified time limit of the task.
+        # The policy is autoregressive and maintains internal state,
+        # so we keep calling select_action in a loop until simulation time runs out.
+        while self.time_now() < deadline:
+            loop_start = self.time_now()
 
             # 1. Get & Process Observation
             observation_msg = get_observation()
@@ -263,7 +305,7 @@ class RunACT(Policy):
             obs_tensors = self.prepare_observations(observation_msg)
 
             # 2. Model Inference
-            with torch.inference_mode():
+            with self.torch.inference_mode():
                 # returns shape [1, 7] (first action of chunk)
                 normalized_action = self.policy.select_action(obs_tensors)
 
@@ -285,13 +327,18 @@ class RunACT(Policy):
                     x=float(action[3]), y=float(action[4]), z=float(action[5])
                 ),
             )
-            motion_update = self.set_cartesian_twist_target(twist)
+            frame_id = "base_link"
+            if "teleop" in self.repo_id:
+                # This policy was trained with TCP observations, so we command in TCP frame.
+                frame_id = "gripper/tcp"
+            motion_update = self.set_cartesian_twist_target(twist, frame_id=frame_id)
             move_robot(motion_update=motion_update)
             send_feedback("in progress...")
 
-            # Maintain control rate (approx 4Hz loop = 0.25s sleep)
-            elapsed = time.time() - loop_start
-            time.sleep(max(0, 0.25 - elapsed))
+            # Maintain control rate (approx 4Hz loop = 0.25s sleep) in sim-time.
+            elapsed = self.time_now() - loop_start
+            elapsed_seconds = max(0.0, elapsed.nanoseconds * 1e-9)
+            self.sleep_for(max(0.0, 0.25 - elapsed_seconds))
 
         self.get_logger().info("RunACT.insert_cable() exiting...")
         return True
