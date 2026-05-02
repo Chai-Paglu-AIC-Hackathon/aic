@@ -228,9 +228,9 @@ class AICKeyboardEETeleop(KeyboardEndEffectorTeleop):
 class AICJoystickTeleopConfig(TeleoperatorConfig):
     operator_position_front: bool = True
     device: str | None = None
-    high_command_scaling: float = 0.05
-    low_command_scaling: float = 0.02
-    deadzone_threshold: float = 0.2
+    high_command_scaling: float = 0.03
+    low_command_scaling: float = 0.015
+    deadzone_threshold: float = 0.3
 
 
 class AICJoystickTeleop(Teleoperator):
