@@ -20,6 +20,8 @@ from .aic_teleop import (
     AICKeyboardEETeleopConfig,
     AICKeyboardJointTeleop,
     AICKeyboardJointTeleopConfig,
+    AICJoystickTeleop,
+    AICJoystickTeleopConfig,
     AICSpaceMouseTeleop,
     AICSpaceMouseTeleopConfig,
 )

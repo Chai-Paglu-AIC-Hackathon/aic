@@ -33,6 +33,22 @@ from rclpy.executors import SingleThreadedExecutor
 from .aic_robot import arm_joint_names
 from .types import JointMotionUpdateActionDict, MotionUpdateActionDict
 
+# Import joystick utilities from cartesian_joystick_teleop
+try:
+    from aic_teleoperation.cartesian_joystick_teleop import (
+        initialize_joystick,
+        apply_deadzone,
+        read_joystick_axes,
+        read_joystick_triggers,
+        read_joystick_buttons,
+        BUTTON_SQUARE,
+        BUTTON_CIRCLE,
+    )
+except ImportError:
+    # Fallback if not available
+    pass
+
+
 
 @TeleoperatorConfig.register_subclass("aic_keyboard_joint")
 @dataclass
@@ -205,6 +221,127 @@ class AICKeyboardEETeleop(KeyboardEndEffectorTeleop):
         self.current_pressed.clear()
 
         return cast(dict, self._current_actions)
+
+
+@TeleoperatorConfig.register_subclass("aic_joystick")
+@dataclass(kw_only=True)
+class AICJoystickTeleopConfig(TeleoperatorConfig):
+    operator_position_front: bool = True
+    device: str | None = None
+    high_command_scaling: float = 0.05
+    low_command_scaling: float = 0.02
+    deadzone_threshold: float = 0.2
+
+
+class AICJoystickTeleop(Teleoperator):
+    def __init__(self, config: AICJoystickTeleopConfig):
+        super().__init__(config)
+        self.config = config
+        self._high_scaling = config.high_command_scaling
+        self._low_scaling = config.low_command_scaling
+        self._current_scaling = self._high_scaling
+        self._is_connected = False
+        self._joystick: Any = None
+        self._current_actions: MotionUpdateActionDict = {
+            "linear.x": 0.0,
+            "linear.y": 0.0,
+            "linear.z": 0.0,
+            "angular.x": 0.0,
+            "angular.y": 0.0,
+            "angular.z": 0.0,
+        }
+        self.button_states: dict[int, bool] = {}
+
+    @property
+    def name(self) -> str:
+        return "aic_joystick"
+
+    @property
+    def action_features(self) -> dict:
+        return MotionUpdateActionDict.__annotations__
+
+    @property
+    def feedback_features(self) -> dict:
+        return {}
+
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
+
+    def connect(self, calibrate: bool = True) -> None:
+        if self.is_connected:
+            raise DeviceAlreadyConnectedError()
+
+        self._joystick = initialize_joystick()
+        self._is_connected = True
+
+    @property
+    def is_calibrated(self) -> bool:
+        return True
+
+    def calibrate(self) -> None:
+        pass
+
+    def configure(self) -> None:
+        pass
+
+    def apply_deadzone(self, value: float) -> float:
+        return value if abs(value) > self.config.deadzone_threshold else 0.0
+
+    def get_action(self) -> dict[str, Any]:
+        if not self.is_connected or self._joystick is None:
+            raise DeviceNotConnectedError()
+
+        axes = read_joystick_axes(self._joystick)
+        triggers = read_joystick_triggers(self._joystick)
+        buttons = read_joystick_buttons(self._joystick)
+
+        linear_x = apply_deadzone(axes['linear_x'], self.config.deadzone_threshold) * self._current_scaling
+        linear_y = apply_deadzone(axes['linear_y'], self.config.deadzone_threshold) * self._current_scaling
+        linear_z = apply_deadzone(axes['linear_z'], self.config.deadzone_threshold) * self._current_scaling
+        angular_x = triggers['angular_x'] * self._current_scaling
+        angular_y = 0.0
+        angular_z = 0.0
+
+        if buttons.get(BUTTON_SQUARE, False) and not self.button_states.get(BUTTON_SQUARE, False):
+            self.button_states[BUTTON_SQUARE] = True
+            self._current_scaling = self._low_scaling
+            print(f"Joystick slow mode enabled: {self._current_scaling}")
+        elif not buttons.get(BUTTON_SQUARE, False):
+            self.button_states[BUTTON_SQUARE] = False
+
+        if buttons.get(BUTTON_CIRCLE, False) and not self.button_states.get(BUTTON_CIRCLE, False):
+            self.button_states[BUTTON_CIRCLE] = True
+            self._current_scaling = self._high_scaling
+            print(f"Joystick fast mode enabled: {self._current_scaling}")
+        elif not buttons.get(BUTTON_CIRCLE, False):
+            self.button_states[BUTTON_CIRCLE] = False
+
+        if not self.config.operator_position_front:
+            linear_x *= -1
+            linear_y *= -1
+            angular_x *= -1
+            angular_y *= -1
+
+        self._current_actions = {
+            "linear.x": linear_x,
+            "linear.y": linear_y,
+            "linear.z": linear_z,
+            "angular.x": angular_x,
+            "angular.y": angular_y,
+            "angular.z": angular_z,
+        }
+
+        return cast(dict, self._current_actions)
+
+    def send_feedback(self, feedback: dict[str, Any]) -> None:
+        pass
+
+    def disconnect(self) -> None:
+        if self._joystick is not None:
+            self._joystick.quit()
+        # pygame.quit()  # Handled by the initialize function's pygame.init()
+        self._is_connected = False
 
 
 @TeleoperatorConfig.register_subclass("aic_spacemouse")

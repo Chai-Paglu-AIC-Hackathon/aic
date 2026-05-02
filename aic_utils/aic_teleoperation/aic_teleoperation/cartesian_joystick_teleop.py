@@ -61,6 +61,56 @@ BUTTON_CROSS = 3  # Toggle base frame
 BUTTON_OPTIONS = 9  # Quit
 
 
+def initialize_joystick():
+    pygame.init()
+
+    if pygame.joystick.get_count() == 0:
+        raise RuntimeError("No joystick detected. Please connect a PS4 controller.")
+
+    joystick = pygame.joystick.Joystick(0)
+    return joystick
+
+
+def apply_deadzone(value: float, threshold: float = DEADZONE_THRESHOLD) -> float:
+    return value if abs(value) > threshold else 0.0
+
+
+def read_joystick_axes(joystick):
+    pygame.event.pump()
+
+    raw_linear_x = joystick.get_axis(AXIS_LEFT_X)
+    raw_linear_y = joystick.get_axis(AXIS_LEFT_Y)
+    raw_linear_z = joystick.get_axis(AXIS_RIGHT_Y)
+    raw_angular_x = joystick.get_axis(AXIS_RIGHT_X)  # Not used in original logic
+
+    return {
+        'linear_x': raw_linear_x,
+        'linear_y': raw_linear_y,
+        'linear_z': raw_linear_z,
+        'angular_x': raw_angular_x,
+    }
+
+
+def read_joystick_triggers(joystick):
+    l2 = joystick.get_axis(AXIS_L2)
+    r2 = joystick.get_axis(AXIS_R2)
+
+    angular_x = 0.0
+    if l2 > 0.5:
+        angular_x = 1.0
+    elif r2 > 0.5:
+        angular_x = -1.0
+
+    return {'angular_x': angular_x}
+
+
+def read_joystick_buttons(joystick):
+    buttons = {}
+    for i in range(joystick.get_numbuttons()):
+        buttons[i] = joystick.get_button(i)
+    return buttons
+
+
 class AICCartesianJoystickTeleoperatorNode(Node):
     def __init__(self):
         super().__init__("aic_joystick_teleoperator_node")
@@ -92,16 +142,11 @@ class AICCartesianJoystickTeleoperatorNode(Node):
             time.sleep(1.0)
 
         # Initialize pygame and joystick
-        pygame.init()
-
-        if pygame.joystick.get_count() == 0:
-            self.get_logger().error("No joystick detected. Please connect a PS4 controller.")
-            rclpy.shutdown()
-            return
-
-        self.joystick = pygame.joystick.Joystick(0)
+        joystick = initialize_joystick()
         self.get_logger().info(f"Pygame version: {pygame.version.ver}")
-        self.get_logger().info(f"Initialized joystick: {self.joystick.get_name()}")
+        self.get_logger().info(f"Initialized joystick: {joystick.get_name()}")
+
+        self.joystick = joystick
 
         # Poll joystick and send commands at 25Hz
         self.timer = self.create_timer(0.04, self.send_references)
@@ -135,13 +180,15 @@ class AICCartesianJoystickTeleoperatorNode(Node):
         return value if abs(value) > DEADZONE_THRESHOLD else 0.0
 
     def send_references(self):
-        pygame.event.pump()  # Update joystick events
+        axes = read_joystick_axes(self.joystick)
+        triggers = read_joystick_triggers(self.joystick)
+        buttons = read_joystick_buttons(self.joystick)
 
         # Read axes
-        raw_linear_x = self.joystick.get_axis(AXIS_LEFT_X)
-        raw_linear_y = self.joystick.get_axis(AXIS_LEFT_Y)  # Invert Y
-        raw_linear_z = self.joystick.get_axis(AXIS_RIGHT_Y)
-        raw_angular_x = self.joystick.get_axis(AXIS_RIGHT_X)
+        raw_linear_x = axes['linear_x']
+        raw_linear_y = axes['linear_y']
+        raw_linear_z = axes['linear_z']
+        angular_x_raw = triggers['angular_x']
 
         print(f"Raw axes - Linear X: {raw_linear_x:.2f}, Linear Y: {raw_linear_y:.2f}, Linear Z: {raw_linear_z:.2f}")
 
@@ -149,12 +196,7 @@ class AICCartesianJoystickTeleoperatorNode(Node):
         linear_y = self.apply_deadzone(raw_linear_y) * self.linear_vel
         linear_z = self.apply_deadzone(raw_linear_z) * self.linear_vel
 
-        angular_x = 0.0
-        if self.joystick.get_axis(AXIS_L2) > 0.5:
-            angular_x = self.angular_vel
-        elif self.joystick.get_axis(AXIS_R2) > 0.5:
-            angular_x = -self.angular_vel
-
+        angular_x = angular_x_raw * self.angular_vel
         angular_y = 0.0
         angular_z = 0.0  # Not mapped, or could use D-pad
 
@@ -182,41 +224,41 @@ class AICCartesianJoystickTeleoperatorNode(Node):
             )
 
         # Handle button presses
-        if self.joystick.get_button(BUTTON_SQUARE) and not self.button_states.get(BUTTON_SQUARE, False):
+        if buttons.get(BUTTON_SQUARE, False) and not self.button_states.get(BUTTON_SQUARE, False):
             self.button_states[BUTTON_SQUARE] = True
             self.linear_vel = SLOW_LINEAR_VEL
             self.angular_vel = SLOW_ANGULAR_VEL
             self.get_logger().info(
                 f"Activated slow mode: Linear velocity = {self.linear_vel} m/s, angular velocity = {self.angular_vel} rad/s"
             )
-        elif not self.joystick.get_button(BUTTON_SQUARE):
+        elif not buttons.get(BUTTON_SQUARE, False):
             self.button_states[BUTTON_SQUARE] = False
 
-        if self.joystick.get_button(BUTTON_CIRCLE) and not self.button_states.get(BUTTON_CIRCLE, False):
+        if buttons.get(BUTTON_CIRCLE, False) and not self.button_states.get(BUTTON_CIRCLE, False):
             self.button_states[BUTTON_CIRCLE] = True
             self.linear_vel = FAST_LINEAR_VEL
             self.angular_vel = FAST_ANGULAR_VEL
             self.get_logger().info(
                 f"Activated fast mode: Linear velocity = {self.linear_vel} m/s, angular velocity = {self.angular_vel} rad/s"
             )
-        elif not self.joystick.get_button(BUTTON_CIRCLE):
+        elif not buttons.get(BUTTON_CIRCLE, False):
             self.button_states[BUTTON_CIRCLE] = False
 
-        if self.joystick.get_button(BUTTON_TRIANGLE) and not self.button_states.get(BUTTON_TRIANGLE, False):
+        if buttons.get(BUTTON_TRIANGLE, False) and not self.button_states.get(BUTTON_TRIANGLE, False):
             self.button_states[BUTTON_TRIANGLE] = True
             self.frame_id = "gripper/tcp"
             self.get_logger().info(f"Toggled target frame_id to '{self.frame_id}'")
-        elif not self.joystick.get_button(BUTTON_TRIANGLE):
+        elif not buttons.get(BUTTON_TRIANGLE, False):
             self.button_states[BUTTON_TRIANGLE] = False
 
-        if self.joystick.get_button(BUTTON_CROSS) and not self.button_states.get(BUTTON_CROSS, False):
+        if buttons.get(BUTTON_CROSS, False) and not self.button_states.get(BUTTON_CROSS, False):
             self.button_states[BUTTON_CROSS] = True
             self.frame_id = "base_link"
             self.get_logger().info(f"Toggled target frame_id to '{self.frame_id}'")
-        elif not self.joystick.get_button(BUTTON_CROSS):
+        elif not buttons.get(BUTTON_CROSS, False):
             self.button_states[BUTTON_CROSS] = False
 
-        if self.joystick.get_button(BUTTON_OPTIONS):
+        if buttons.get(BUTTON_OPTIONS, False):
             self.get_logger().info("Options button pressed. Shutting down.")
             rclpy.shutdown()
 
