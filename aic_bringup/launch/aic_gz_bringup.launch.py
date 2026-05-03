@@ -553,7 +553,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "rviz_config_file",
             default_value=PathJoinSubstitution(
-                [FindPackageShare("aic_bringup"), "rviz", "aic.rviz"]
+                [FindPackageShare("aic_bringup"), "rviz", "aic_chaipaglu_teleop.rviz"]
             ),
             description="Rviz config file (absolute path) to use when launching rviz.",
         )

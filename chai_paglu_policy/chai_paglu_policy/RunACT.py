@@ -68,28 +68,28 @@ class RunACT(Policy):
         # -------------------------------------------------------------------------
         # 1. Configuration & Weights Loading
         # -------------------------------------------------------------------------
-        self.repo_id = "chai-paglu/act_14eps_cheatcode"
+        # self.repo_id = "chai-paglu/act_14eps_cheatcode"
 
         # TODO: MAKE SURE TO TRY THIS WITH FRAME ID SET TO `gripper/tcp` INSTEAD OF `base_link` IF PERFORMANCE IS POOR. 
         # THE POLICY WAS TRAINED WITH OBSERVATIONS IN THE TCP FRAME, SO IT MAY EXPECT ACTIONS TO BE COMMANDED IN THE TCP FRAME AS WELL. 
         # THIS REQUIRES A TF TRANSFORM TO BE PUBLISHED FROM `base_link` TO `gripper/tcp`, BUT IT COULD SIGNIFICANTLY IMPROVE PERFORMANCE 
         # BY MATCHING THE TRAINING CONDITIONS OF THE POLICY.
 
-        self.repo_id = "chai-paglu/act_11eps_teleop_sam"
+        # self.repo_id = "chai-paglu/act_11eps_teleop_sam"
+        self.repo_id = "ashms1995/joystick_act_training_1_75k"
 
         # Path to your checkpoint folder.
         # Installed ROS package data is placed in package share.
         this_file_parent = Path(__file__).resolve().parent
-        policy_path = this_file_parent / "act_14eps_cheatcode"
+        local_policy_path = this_file_parent / "local_model_checkpoint"
 
         DOWNLOAD_FROM_HF_HUB = True
-        if not DOWNLOAD_FROM_HF_HUB and not policy_path.exists():
+        if not DOWNLOAD_FROM_HF_HUB and not local_policy_path.exists():
             raise FileNotFoundError(
-                f"Policy path not found: {policy_path}. "
+                f"Policy path not found: {local_policy_path}. "
                 "Ensure the resource folder is installed into package share."
             )
 
-        self.get_logger().info(f"Loading ACT policy from local path: {policy_path}")
         if DOWNLOAD_FROM_HF_HUB:
             policy_path = Path(
                 self.snapshot_download(
@@ -98,7 +98,10 @@ class RunACT(Policy):
                 )
             )
             self.get_logger().info(f"Policy files downloaded to: {policy_path}")
-        self.get_logger().info(f"Policy files in directory: {list(policy_path.iterdir())}")
+        else:
+            policy_path = local_policy_path
+            self.get_logger().info(f"Loading ACT policy from local path: {policy_path}")
+            self.get_logger().info(f"Policy files in directory: {list(policy_path.iterdir())}")
 
         # Load Config Manually (Fixes 'Draccus' error by removing unknown 'type' field)
         with open(policy_path / "config.json", "r") as f:
@@ -110,8 +113,12 @@ class RunACT(Policy):
         config = self.draccus.decode(self.ACTConfig, config_dict)
         self.get_logger().info(f"Policy config decoded successfully: {config}")
 
+        # Execute only 10 steps of the action chunk to maintain responsiveness, even though the policy outputs 50 steps.
+        self.get_logger().warn("Overriding config.n_action_steps to 10 for improved responsiveness.")
+        config.n_action_steps = 10
+
         # Prevent torchvision from attempting to download pretrained backbone weights
-        if getattr(config, "pretrained_backbone_weights", None) is not None:
+        if not DOWNLOAD_FROM_HF_HUB and getattr(config, "pretrained_backbone_weights", None) is not None:
             self.get_logger().warn(
                 "Overriding pretrained backbone weights to None to avoid internet access"
             )
@@ -328,8 +335,9 @@ class RunACT(Policy):
                 ),
             )
             frame_id = "base_link"
-            if "teleop" in self.repo_id:
+            if "teleop" in self.repo_id or "joystick" in self.repo_id:
                 # This policy was trained with TCP observations, so we command in TCP frame.
+                self.get_logger().info("Using Gripper/TCP frame for motion commands.")
                 frame_id = "gripper/tcp"
             motion_update = self.set_cartesian_twist_target(twist, frame_id=frame_id)
             move_robot(motion_update=motion_update)
@@ -362,7 +370,7 @@ class RunACT(Policy):
 
         motion_update_msg.wrench_feedback_gains_at_tip = [0.5, 0.5, 0.5, 0.0, 0.0, 0.0]
 
-        USE_CHEATCODE_PARAMS = True
+        USE_CHEATCODE_PARAMS = False
         USE_TELEOP_PARAMS = False
         if USE_TELEOP_PARAMS:
             motion_update_msg.target_stiffness = np.diag(

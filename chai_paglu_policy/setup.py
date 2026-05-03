@@ -15,7 +15,7 @@ setup(
     package_data={
         'chai_paglu_policy': [
             'py.typed',
-            'act_14eps_cheatcode/*',
+            'local_model_checkpoint/*',
         ],
     },
     install_requires=['setuptools'],

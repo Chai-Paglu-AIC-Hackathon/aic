@@ -298,7 +298,7 @@ class AICJoystickTeleop(Teleoperator):
 
         linear_x = apply_deadzone(axes['linear_x'], self.config.deadzone_threshold) * self._current_scaling
         linear_y = apply_deadzone(axes['linear_y'], self.config.deadzone_threshold) * self._current_scaling
-        linear_z = apply_deadzone(axes['linear_z'], self.config.deadzone_threshold) * self._current_scaling
+        linear_z = apply_deadzone(axes['linear_z'], self.config.deadzone_threshold) * self._low_scaling
         angular_x = triggers['angular_x'] * self._current_scaling
         angular_y = 0.0
         angular_z = 0.0

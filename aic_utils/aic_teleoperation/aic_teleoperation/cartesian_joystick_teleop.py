@@ -244,19 +244,19 @@ class AICCartesianJoystickTeleoperatorNode(Node):
         elif not buttons.get(BUTTON_CIRCLE, False):
             self.button_states[BUTTON_CIRCLE] = False
 
-        if buttons.get(BUTTON_TRIANGLE, False) and not self.button_states.get(BUTTON_TRIANGLE, False):
-            self.button_states[BUTTON_TRIANGLE] = True
-            self.frame_id = "gripper/tcp"
-            self.get_logger().info(f"Toggled target frame_id to '{self.frame_id}'")
-        elif not buttons.get(BUTTON_TRIANGLE, False):
-            self.button_states[BUTTON_TRIANGLE] = False
+        # if buttons.get(BUTTON_TRIANGLE, False) and not self.button_states.get(BUTTON_TRIANGLE, False):
+        #     self.button_states[BUTTON_TRIANGLE] = True
+        #     self.frame_id = "gripper/tcp"
+        #     self.get_logger().info(f"Toggled target frame_id to '{self.frame_id}'")
+        # elif not buttons.get(BUTTON_TRIANGLE, False):
+        #     self.button_states[BUTTON_TRIANGLE] = False
 
-        if buttons.get(BUTTON_CROSS, False) and not self.button_states.get(BUTTON_CROSS, False):
-            self.button_states[BUTTON_CROSS] = True
-            self.frame_id = "base_link"
-            self.get_logger().info(f"Toggled target frame_id to '{self.frame_id}'")
-        elif not buttons.get(BUTTON_CROSS, False):
-            self.button_states[BUTTON_CROSS] = False
+        # if buttons.get(BUTTON_CROSS, False) and not self.button_states.get(BUTTON_CROSS, False):
+        #     self.button_states[BUTTON_CROSS] = True
+        #     self.frame_id = "base_link"
+        #     self.get_logger().info(f"Toggled target frame_id to '{self.frame_id}'")
+        # elif not buttons.get(BUTTON_CROSS, False):
+        #     self.button_states[BUTTON_CROSS] = False
 
         if buttons.get(BUTTON_OPTIONS, False):
             self.get_logger().info("Options button pressed. Shutting down.")
